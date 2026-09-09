@@ -1,0 +1,81 @@
+@startuml
+title Single Optimization Stage
+
+class MagnetConfiguration {
+    +positions: torch.Tensor
+    +orientations: torch.Tensor
+    +volumes: torch.Tensor
+    +remanence
+    +metadata: dict
+}
+
+class HalbachRingGeometry {
+    +build(): MagnetConfiguration
+}
+
+abstract class PointSampler {
+    +get_points(): torch.Tensor
+    +get_grid(): torch.Tensor
+}
+
+class CartesianGridSampler
+class MaskedPointSampler
+class PredefinedPointSampler
+
+class "torch.nn.Module" as TorchModule
+
+class SingleRingHalbachModel {
+    +forward(): dict[str, torch.Tensor]
+    +get_scalars_to_log(output, loss): dict
+    +get_images_to_log(output): dict
+    +get_configuration(): MagnetConfiguration
+}
+
+class HalbachSystemAngleModel
+class DomeAngleModel
+class DomePositionModel
+
+class TrainLoop {
+    +__init__(model, optimizer, loss_fn, logger, ...)
+    +run(): torch.Tensor
+}
+
+class "torch.optim.Optimizer" as TorchOptimizer
+class "loss_fn\nCallable[[dict], torch.Tensor]" as LossFunction <<callable>>
+
+class WandbLogger {
+    +log_scalars(scalars, epoch)
+    +log_images(images, epoch)
+    +save_configuration(configuration, epoch)
+    +close()
+}
+
+class "callbacks\nlist[object]" as Callbacks <<collection>>
+
+PointSampler <|-- CartesianGridSampler
+PointSampler <|-- MaskedPointSampler
+PointSampler <|-- PredefinedPointSampler
+
+TorchModule <|-- SingleRingHalbachModel
+SingleRingHalbachModel <|-- HalbachSystemAngleModel
+SingleRingHalbachModel <|-- DomeAngleModel
+DomeAngleModel <|-- DomePositionModel
+
+HalbachRingGeometry --> MagnetConfiguration : builds
+MagnetConfiguration --> SingleRingHalbachModel : initializes
+PointSampler --> SingleRingHalbachModel : supplies points
+
+TrainLoop --> SingleRingHalbachModel : evaluates and exports
+TrainLoop --> TorchOptimizer : steps
+TrainLoop --> LossFunction : evaluates
+TrainLoop o-- WandbLogger : logs through
+TrainLoop o-- Callbacks : invokes
+WandbLogger --> MagnetConfiguration : saves
+
+note right of SingleRingHalbachModel
+  A stage may use another model with the
+  same forward, logging, and configuration-
+  export methods.
+end note
+
+@enduml

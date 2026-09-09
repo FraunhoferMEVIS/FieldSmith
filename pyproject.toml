@@ -1,0 +1,70 @@
+[project]
+name = "fieldsmith"
+version = "0.1.0"
+description = "Fast dipole-field based magnet optimization utilities."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "deap>=1.4.3",
+    "ipykernel>=7.3.0",
+    "magpylib>=5.2,<6",
+    "matplotlib",
+    "nbformat>=4.2.0",
+    "numpy",
+    "plotly>=6.8.0",
+    "pytest>=9.1.1",
+    "scipy",
+    "tqdm>=4.70.0",
+    "wandb",
+]
+
+[project.optional-dependencies]
+cpu = [
+    "torch==2.11.0",
+]
+cu128 = [
+    "torch==2.11.0",
+]
+
+[tool.uv]
+conflicts = [
+    [
+        { extra = "cpu" },
+        { extra = "cu128" },
+    ],
+]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu128", extra = "cu128" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=7.1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+markers = [
+    "unit: Fast tests for isolated units of behavior.",
+    "validation: Tests that validate numerical or system behavior against reference results.",
+]
