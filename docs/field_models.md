@@ -10,23 +10,23 @@ are expressed in metres, remanence and the resulting field in tesla.
 a point dipole. For volume $V_i$, remanence magnitude $B_{r,i}$, and unit
 magnetization direction $\hat{\mathbf m}_i$,
 
-$
+$$
 \mathbf M_i = \frac{B_{r,i}}{\mu_0}\hat{\mathbf m}_i,
 \qquad
 \mathbf m_i = V_i\mathbf M_i
             = \frac{V_i}{\mu_0}\mathbf B_{r,i}.
-$
+$$
 
 At an evaluation point $\mathbf r$, define
 $\mathbf R_i=\mathbf r-\mathbf r_i$. The implementation computes
 
-$
+$$
 \mathbf B(\mathbf r)=\frac{\mu_0}{4\pi}
 \sum_i\left[
 \frac{3\mathbf R_i(\mathbf m_i\cdot\mathbf R_i)}{\lVert\mathbf R_i\rVert^5}
 -\frac{\mathbf m_i}{\lVert\mathbf R_i\rVert^3}
 \right].
-$
+$$
 
 The inputs `dipole_br`, `dipole_pos`, and `points` have shapes `(M, 3)`,
 `(M, 3)`, and `(P, 3)`. `vol` is scalar or has shape `(M,)`. Evaluation may be
@@ -41,17 +41,17 @@ magnetized cuboids. Consider one cuboid in its local frame, with half-lengths
 $a,b,c$ and point coordinates $(x,y,z)$ relative to its centre. For
 $p,q,s\in\{-1,1\}$, define
 
-$
+$$
 x_p=x-pa,\qquad y_q=y-qb,\qquad z_s=z-sc,
-$
+$$
 
-$
+$$
 \rho_{pqs}=\sqrt{x_p^2+y_q^2+z_s^2}.
-$
+$$
 
 For remanence $B_{r,z}$ along the local $z$-axis, the code evaluates
 
-$
+$$
 \mathbf B^{(z)}(x,y,z)=\frac{B_{r,z}}{4\pi}
 \sum_{p,q,s}(-pqs)
 \begin{bmatrix}
@@ -59,7 +59,7 @@ $
 \ln(x_p+\rho_{pqs})\\
 -\operatorname{atan2}(x_py_q,z_s\rho_{pqs})
 \end{bmatrix}.
-$
+$$
 
 The local $x$- and $y$-magnetized contributions are obtained by cyclically
 permuting the coordinates, dimensions, and remanence components. Their sum gives
@@ -70,11 +70,11 @@ $Q_i$ stores the local body axes as rows. The code transforms the displacement
 and remanence into the body frame, evaluates the local field, and transforms it
 back:
 
-$
+$$
 \mathbf r'_i=Q_i(\mathbf r-\mathbf r_i),\qquad
 \mathbf B'_{r,i}=Q_i\mathbf B_{r,i},\qquad
 \mathbf B_i(\mathbf r)=Q_i^{\mathsf T}\mathbf B'_i(\mathbf r'_i).
-$
+$$
 
 `magnet_br`, `magnet_size`, and `magnet_pos` have shape `(M, 3)`;
 `magnet_size` contains full side lengths. `axes`, when present, has shape
