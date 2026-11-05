@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+from typing import Sequence
+
 import torch
 from torch import nn
 
@@ -42,26 +44,51 @@ class DomePositionModel(DomeAngleModel):
     collision pair list can be refreshed at the new geometry.
     """
 
-    def __init__(self, *args, position_bound_m: float = 2.0e-3, **kwargs) -> None:
-        if position_bound_m <= 0.0:
-            raise ValueError("position_bound_m must be positive.")
-        # Set before the parent runs: its constructor builds the demagnetisation
-        # coupling, which reads the centres back through effective_positions(),
-        # so the bound has to exist by then.
-        self.position_bound_m: float = position_bound_m
+    def __init__(self, *args, position_bound_m: float | Sequence[float] = 2.0e-3, in_plane: bool = False,
+                 base_positions: torch.Tensor | None = None, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.position_offsets: nn.Parameter = nn.Parameter(torch.zeros_like(self.magnet_positions))
+        # One bound for all axes, or one per axis (x, y, z).
+        bounds = (float(position_bound_m),) * 3 if isinstance(position_bound_m, (int, float)) \
+            else tuple(float(v) for v in position_bound_m)
+        if len(bounds) != 3 or min(bounds) <= 0.0:
+            raise ValueError("position_bound_m must be a positive number or three positive numbers (x, y, z).")
+        self.position_bound_m: float = max(bounds)
+        # A single bound keeps scalar arithmetic, which the dome's reported run used.
+        # Dividing by a scalar or by a tensor differs in the last bit on the GPU.
+        self.scalar_bound: bool = isinstance(position_bound_m, (int, float))
+        self.register_buffer("position_bound_axes", torch.tensor(bounds, dtype=self.magnet_positions.dtype))
+        # In-plane displacement masks the z offset, so every magnet stays on its plate.
+        self.in_plane: bool = in_plane
+        # With base_positions the box stays around the original seats for a whole
+        # chain of stages, and the loaded design becomes an offset inside it.
+        loaded = self.magnet_positions.detach().clone()
+        if base_positions is None:
+            start = torch.zeros_like(loaded)
+        else:
+            base = torch.as_tensor(base_positions).to(loaded)
+            if base.shape != loaded.shape:
+                raise ValueError("base_positions must hold one centre per magnet.")
+            axes = self.position_bound_axes.to(loaded)
+            ratio = ((loaded - base) / axes).clamp(-0.999999, 0.999999)
+            if ((loaded - base).abs() > axes).any():
+                raise ValueError("the loaded design lies outside the bound around base_positions; widen the bound.")
+            with torch.no_grad():
+                self.magnet_positions.copy_(base)
+            start = axes * torch.atanh(ratio)
+        self.position_offsets: nn.Parameter = nn.Parameter(start)
 
     def effective_positions(self) -> torch.Tensor:
         """Return the magnet centres, displaced within the bound."""
-        bound = self.position_bound_m
-        # The parent constructor builds the demagnetisation coupling, which reads
-        # the centres back through here before this class has had a chance to
-        # register its offsets. Until it has, the centres are simply the base.
+        # The parent constructor evaluates the geometry before this subclass has
+        # created its offset, so fall back to the base arrangement until it exists.
         offsets = getattr(self, "position_offsets", None)
         if offsets is None:
             return self.magnet_positions
-        return self.magnet_positions + bound * torch.tanh(offsets / bound)
+        bound = self.position_bound_m if self.scalar_bound else self.position_bound_axes.to(offsets)
+        displacement = bound * torch.tanh(offsets / bound)
+        if self.in_plane:
+            displacement = displacement * displacement.new_tensor((1.0, 1.0, 0.0))
+        return self.magnet_positions + displacement
 
     @torch.no_grad()
     def bake_positions(self) -> torch.Tensor:

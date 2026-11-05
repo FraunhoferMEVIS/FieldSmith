@@ -97,7 +97,18 @@ def build_demag_coupling(
 
     index = torch.arange(n_magnets, device=device)
     coupling.view(n_magnets, 3, n_magnets, 3)[index, :, index, :] = 0.0
-    return 0.5 * (coupling + coupling.T)
+    # Symmetrize block by block to avoid holding three full matrices at once.
+    band = max(3, (chunk_magnets * 3 // 3) * 3)
+    for row in range(0, size, band):
+        row_end = min(row + band, size)
+        for col in range(0, row_end, band):
+            col_end = min(col + band, size)
+            upper = coupling[row:row_end, col:col_end]
+            lower = coupling[col:col_end, row:row_end]
+            mean = upper.add(lower.T).mul_(0.5)
+            coupling[row:row_end, col:col_end] = mean
+            coupling[col:col_end, row:row_end] = mean.T
+    return coupling
 
 
 def apply_first_order_demag(

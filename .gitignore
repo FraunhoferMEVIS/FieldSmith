@@ -1,3 +1,5 @@
+*.md
+!README.md
 __pycache__/
 logs/
 src/fieldsmith.egg-info/
@@ -19,3 +21,11 @@ notebooks/
 !docs/*.md
 scripts/unused/*
 .coverage
+runs/
+outputs/
+!data/head_roi.npz
+!data/roma/
+data/roma/*
+!data/roma/roma_roi_200.npz
+!data/paper/
+!data/paper/*.pt

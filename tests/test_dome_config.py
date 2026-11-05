@@ -146,7 +146,7 @@ def test_from_file_wraps_parser_errors(
         ({"aperture_radius": -0.01}, "dome_radius must exceed a non-negative aperture_radius"),
         ({"dome_radius": 0.06}, "dome_radius must exceed a non-negative aperture_radius"),
         ({"dome_height": 0.0}, "dome_height must be positive"),
-        ({"field_model": "sphere"}, 'field_model must be "dipole" or "cuboid"'),
+        ({"field_model": "sphere"}, 'field_model must be "dipole", "cuboid" or "mixed"'),
         ({"chi_par": -0.01}, "Susceptibilities must be non-negative"),
         ({"chi_perp": -0.01}, "Susceptibilities must be non-negative"),
         ({"fov": (0.12, -0.1, 0.08)}, "FOV sizes must be non-negative"),

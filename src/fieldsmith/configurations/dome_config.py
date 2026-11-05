@@ -87,8 +87,8 @@ class DomeConfig:
             raise ValueError("dome_radius must exceed a non-negative aperture_radius.")
         if self.dome_height <= 0.0:
             raise ValueError("dome_height must be positive.")
-        if self.field_model not in ("dipole", "cuboid"):
-            raise ValueError('field_model must be "dipole" or "cuboid".')
+        if self.field_model not in ("dipole", "cuboid", "mixed"):
+            raise ValueError('field_model must be "dipole", "cuboid" or "mixed".')
         if self.chi_par < 0.0 or self.chi_perp < 0.0:
             raise ValueError("Susceptibilities must be non-negative.")
         if any(size < 0.0 for size in self.fov):

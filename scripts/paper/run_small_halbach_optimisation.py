@@ -14,7 +14,7 @@ from typing import Any, TextIO
 import torch
 from torch import nn
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from fieldsmith.configurations import MagnetConfiguration
 from fieldsmith.logger import WandbLogger

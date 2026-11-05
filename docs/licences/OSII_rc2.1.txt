@@ -1,5 +1,5 @@
 This License is only used for the data of the ring positions of ROMA Arrangements in data/osii_rc2.1.
-The ring positions are used for the benchmarking of the ROMA Arrangement only in the script: scripts/run_fast_roma_optimisation.py
+The ring positions are used for the benchmarking of the ROMA Arrangement only in the script: scripts/paper/run_fast_roma_optimisation.py
 
 CERN Open Hardware Licence Version 2 - Weakly Reciprocal
 

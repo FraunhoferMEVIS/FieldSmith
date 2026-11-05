@@ -97,6 +97,21 @@ class MaskedPointSampler(PointSampler):
         return mask.reshape(grid.shape[:-1])
 
 
+class UnionPointSampler(PointSampler):
+    """Concatenate the points of several samplers."""
+
+    def __init__(self, samplers: Sequence[PointSampler]) -> None:
+        if not samplers:
+            raise ValueError("UnionPointSampler needs at least one sampler.")
+        self.samplers: tuple[PointSampler, ...] = tuple(samplers)
+
+    def get_points(self) -> torch.Tensor:
+        return torch.cat([sampler.get_points() for sampler in self.samplers])
+
+    def get_grid(self) -> torch.Tensor:
+        return self.samplers[0].get_grid()
+
+
 class PredefinedPointSampler(PointSampler):
     """Use an existing tensor of arbitrary evaluation points."""
 
@@ -112,4 +127,5 @@ class PredefinedPointSampler(PointSampler):
         raise NotImplementedError("PredefinedPointSampler does not support get_grid().")
 
 
-__all__ = ["CartesianGridSampler", "MaskedPointSampler", "PointSampler", "PredefinedPointSampler"]
+__all__ = ["CartesianGridSampler", "MaskedPointSampler", "PointSampler", "PredefinedPointSampler",
+           "UnionPointSampler"]

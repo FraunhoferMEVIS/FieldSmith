@@ -84,3 +84,49 @@ def cube_axes_min_z_extent(directions: torch.Tensor) -> torch.Tensor:
     axis_x = torch.where(norm >= eps, transverse / norm.clamp_min(eps), fallback)
     axis_y = torch.linalg.cross(axis_z, axis_x)
     return torch.stack((axis_x, axis_y, axis_z), dim=-2)
+
+
+def cube_axes_about_z(directions: torch.Tensor) -> torch.Tensor:
+    """
+    Build a per-magnet body frame turned about z by the magnetization azimuth.
+
+    This is the only rotation available to a body that cannot be tilted, such
+    as a bar standing along the bore.
+
+    Args:
+        directions: Magnetization directions, shape (M, 3). Only the azimuth is
+            read, so a direction leaving the plane is projected onto it.
+
+    Returns:
+        Body frames, shape (M, 3, 3), row k the local x, y and z axis in world
+        coordinates, right-handed and orthonormal, with local z along world z
+        and local x along the in-plane part of the direction.
+    """
+    if directions.ndim != 2 or directions.shape[1] != 3:
+        raise ValueError("directions must have shape (M, 3).")
+    azimuth = torch.atan2(directions[:, 1], directions[:, 0])
+    cos, sin = torch.cos(azimuth), torch.sin(azimuth)
+    zero, one = torch.zeros_like(cos), torch.ones_like(cos)
+    return torch.stack((torch.stack((cos, sin, zero), dim=-1),
+                        torch.stack((-sin, cos, zero), dim=-1),
+                        torch.stack((zero, zero, one), dim=-1)), dim=-2)
+
+
+def cube_axes_seated(directions: torch.Tensor, sizes: torch.Tensor) -> torch.Tensor:
+    """
+    Build the frame each body has when seated with its moment.
+
+    Cubes take the pocket frame of ``cube_axes_min_z_extent``. Other bodies,
+    such as ROMA's bars, turn only about the bore axis (``cube_axes_about_z``).
+
+    Args:
+        directions: Magnetization directions, shape (M, 3).
+        sizes: Side lengths in meters, shape (M, 3); equal sides mark a cube.
+
+    Returns:
+        Row-major body frames, shape (M, 3, 3).
+    """
+    is_cube = (sizes.max(dim=1).values - sizes.min(dim=1).values).abs() < 1e-9
+    seated = cube_axes_min_z_extent(directions)
+    turned = cube_axes_about_z(directions)
+    return torch.where(is_cube[:, None, None], seated, turned)

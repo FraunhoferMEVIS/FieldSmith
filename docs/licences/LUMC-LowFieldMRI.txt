@@ -1,4 +1,4 @@
-The License is used only for the script scripts/lumc/homogeneityOptimization.py and the corresponding utility file src/fieldsmith/evaluation/lumc_halbach.py.
+The License is used only for the script scripts/paper/lumc/homogeneityOptimization.py and the corresponding utility file src/fieldsmith/evaluation/lumc_halbach.py.
 
 MIT License
 

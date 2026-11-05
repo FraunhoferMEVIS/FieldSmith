@@ -96,6 +96,7 @@ def test_demagnetization_coupling_is_built_and_applied(
     def fake_build(
         positions: torch.Tensor,
         sizes: torch.Tensor,
+        axes: torch.Tensor | None = None,
     ) -> torch.Tensor:
         build_calls.append((positions.clone(), sizes.clone()))
         return coupling
@@ -150,7 +151,7 @@ def test_get_configuration_records_dome_physics() -> None:
 
 
 def test_model_rejects_invalid_field_model() -> None:
-    with pytest.raises(ValueError, match='field_model must be "dipole" or "cuboid"'):
+    with pytest.raises(ValueError, match='field_model must be "dipole", "cuboid" or "mixed"'):
         make_model(dome_configuration(), field_model="sphere")
 
 
@@ -167,3 +168,34 @@ def test_model_requires_magnet_size_for_body_physics(
 ) -> None:
     with pytest.raises(ValueError, match="positive"):
         make_model(dome_configuration(include_size=False), **kwargs)
+
+
+def cube_and_bar_configuration() -> MagnetConfiguration:
+    """The two-magnet configuration with the second magnet a 10 x 10 x 40 mm bar."""
+    base = dome_configuration()
+    return MagnetConfiguration(
+        positions=base.positions, orientations=base.orientations,
+        volumes=torch.tensor([1.0e-6, 4.0e-6], dtype=torch.float64), remanence=1.2,
+        metadata={**base.metadata,
+                  "magnet_dimensions_m": torch.tensor([[0.01, 0.01, 0.01], [0.01, 0.01, 0.04]], dtype=torch.float64)},
+    )
+
+
+def test_mixed_model_matches_the_mixed_evaluation() -> None:
+    from fieldsmith.evaluation import field_at_points
+
+    configuration = cube_and_bar_configuration()
+    model = make_model(configuration, field_model="mixed")
+    expected = field_at_points(configuration, model.points, "mixed", frame_rule="argmin")
+    assert torch.allclose(model()["B"], expected, rtol=1e-10, atol=0.0)
+
+
+def test_lock_holds_the_bar_in_its_plane() -> None:
+    configuration = cube_and_bar_configuration()
+    configuration.metadata["lock_elongated_polar"] = True
+    model = make_model(configuration, field_model="mixed")
+    with torch.no_grad():
+        model.magnet_polar_angles.add_(0.3)
+    polar = torch.acos(model.create_magnet_orientations()[:, 2]).detach()
+    assert float(polar[1]) == pytest.approx(torch.pi / 2)          # the bar stays flat
+    assert float(polar[0]) == pytest.approx(torch.pi / 4 + 0.3)    # the cube tilts

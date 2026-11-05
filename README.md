@@ -24,6 +24,7 @@ The software is not qualified for use as a medical product or as part thereof. P
 - Run gradient based optimizationson  magnet orientations, magnet positions, etc. within the given PyTorch framework.
 - Evaluate field strength, peak-to-peak homogeneity, and RMS deviation.
 - Run Monte Carlo studies of manufacturing tolerances.
+- Move magnets within bounded boxes under a clearance penalty, and export a design as printable plates with seats, lids and fastening rails.
 
 
 ## Installation
@@ -56,18 +57,38 @@ around 1,000 ppm or below.
 | Workflow | Entry point |
 | --- | --- |
 | Generic Halbach system example | `scripts/example_system_optimization.py` |
-| Single Halbach ring angle optimization | `scripts/run_fast_halbach_ring_optimisation.py` |
-| Three-stage small Halbach system optimization | `scripts/run_small_halbach_optimisation.py` |
-| ROMA multi-ring system angle optimization | `scripts/run_fast_roma_optimisation.py` |
+| Single Halbach ring angle optimization | `scripts/paper/run_fast_halbach_ring_optimisation.py` |
+| Three-stage small Halbach system optimization | `scripts/paper/run_small_halbach_optimisation.py` |
+| ROMA multi-ring system angle optimization | `scripts/paper/run_fast_roma_optimisation.py` |
 | Open-cap/dome system optimization | `scripts/run_dome_optimisation.py` |
+| Printable plates, lids and rails | `scripts/export_plates.py` |
 | Manufacturing Monte Carlo | `scripts/run_monte_carlo_evaluation.py` |
 
 See [docs/examples.md](docs/examples.md) for command examples and the geometry
 verification workflow.
 
-To reproduce the reference experiments and publication comparisons with their
-specified parameters and random seeds, see the
-[reproduction guide](docs/reproduction.md).
+## Reproducing the paper
+
+Every optimization reported in the paper can be rerun from this repository. The
+[reproduction guide](docs/reproduction.md) gives each command with its parameters,
+random seeds and expected numbers.
+
+| Paper result | Entry point |
+| --- | --- |
+| Single-ring orientation benchmark | `scripts/paper/run_fast_halbach_ring_optimisation.py` |
+| Ring-radius comparison of GA, DE and gradient descent | `scripts/paper/lumc/` |
+| Small Halbach demonstrator | `scripts/paper/run_small_halbach_optimisation.py` |
+| ROMA after least-squares initialization, 321 ppm | `scripts/paper/roma_from_lsq_seed.sh` |
+| ROMA refinement at the published seats, 332 ppm | `scripts/paper/roma_refined_at_seats.sh` |
+| Cylinder opened along one side, 672 ppm | `scripts/paper/opened_cylinder.sh` |
+| Dome-shaped head array, 980 ppm | `scripts/paper/dome_head_array.sh` |
+
+Paper experiment entry points live in `scripts/paper/`, with the LUMC comparison
+scripts in `scripts/paper/lumc/`. Run them from the repository root using the
+commands in the reproduction guide. Shared optimization, input-building, and
+stage helpers remain in `scripts/` and `scripts/stages/`.
+The four shell scripts in `scripts/paper/` run without arguments and build their own inputs.
+The four reported designs are in `data/paper/` as `.pt` configurations.
 
 ## Outputs and checkpoints
 
@@ -75,7 +96,8 @@ Runs write to timestamped directories below `logs/` unless an output directory i
 specified. `TrainLoop` stores periodic `MagnetConfiguration` checkpoints as
 `configurations/epoch_<N>.pt`, including when W&B logging is disabled. Specialized
 workflows may also write a final configuration, summary JSON, CSV history, and
-plots; the command prints the selected output directory.
+plots; the command prints the selected output directory. The four shell scripts in
+`scripts/paper/` write their stages and the final design to `runs/<name>/`.
 
 ## Documentation
 
@@ -109,7 +131,7 @@ uv run --extra cpu pytest tests --cov=fieldsmith --cov-report=html
 
 The additional notice for the utilized software in [`docs/licences/`](docs/licences/) summarizes the:
 
-- [MIT License](docs/licences/LUMC-LowFieldMRI.txt) for the `scripts/lumc/homogeneityOptimization.py` and `src/fieldsmith/evaluation/lumc_halbach.py`. Corresponding repository: [HalbachOptimization](https://github.com/LUMC-LowFieldMRI/HalbachOptimisation).
+- [MIT License](docs/licences/LUMC-LowFieldMRI.txt) for the `scripts/paper/lumc/homogeneityOptimization.py` and `src/fieldsmith/evaluation/lumc_halbach.py`. Corresponding repository: [HalbachOptimization](https://github.com/LUMC-LowFieldMRI/HalbachOptimisation).
 - [CERN Open Hardware Licence Version 2](docs/licences/OSII_rc2.1.txt) for the files, describing the ROMA Arrangment in `data/osii_rc2.1/`. Corresponding repository: [OSII/rc/2.1](https://gitlab.com/osii/magnet/30cm-halbach-magnet/-/tree/rc/2.1?ref_type=heads)
 
 ## Citing
@@ -121,4 +143,4 @@ As soon as the paper is published the citing temlate of the software-related pap
 For support with regard to the **FieldSmith** software please contact:
 
 - Kostiantyn Lavronenko: [kostiantyn.lavronenko@mevis.fraunhofer.de](mailto:kostiantyn.lavronenko@mevis.fraunhofer.de)
-- Marian Frei: [marian.frei@mevis.fraunhofer.de](mailto:marian.frei@mevis.fraunhofer.de)
+- Marian Frei: [marian.frei@lfb.rwth-aachen.de](mailto:marian.frei@lfb.rwth-aachen.de)

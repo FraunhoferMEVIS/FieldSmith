@@ -13,7 +13,6 @@ from pathlib import Path
 
 import torch
 
-from fieldsmith.configurations.setup_npy import save_halbach_setup_npy
 from fieldsmith.evaluation import truth_eval_report
 
 
@@ -51,8 +50,20 @@ class PeriodicTruthEvaluation:
                                        self.chunk_points, self.frame_rule)
         self.latest = {"epoch": epoch + 1, "ppm": report["demag"]["peak_to_peak_ppm"],
                        "field_mT": report["demag"]["fieldstrength_mT"],
-                       "overlaps": report["overlaps"]}
+                       "overlaps": report["overlaps"],
+                       "contacts": report.get("contacts", -1),
+                       "tilt_deg": report.get("tilt_deg", 0.0)}
         self.history.append(self.latest)
+        # Contacts are reported beside overlaps: the gate tolerates them, the plates do not.
+        line = (f"[truth] epoch {self.latest['epoch']}: {self.latest['ppm']:.0f} ppm "
+                f"at {self.latest['field_mT']:.2f} mT, {self.latest['overlaps']} overlaps, "
+                f"{self.latest['contacts']} contacts")
+        # A tilted bar cannot be built. A few degrees move a 50 mm bar's tip by
+        # under 2 mm, so only larger tilts are flagged.
+        if self.latest["tilt_deg"] > 5.0:
+            line += (f", NOT BUILDABLE AS MODELLED: {self.latest['tilt_deg']:.0f} deg "
+                     f"out of plane on elongated bodies")
+        print(line, flush=True)
 
 
 class BestStateTracker:
@@ -94,7 +105,7 @@ class BestStateTracker:
             self.best_configuration.metadata.setdefault(
                 "magnet_size_m", getattr(model, "magnet_size", 0.0))
         if self.path is not None:
-            save_halbach_setup_npy(self.path, self.best_configuration)
+            torch.save(self.best_configuration.to_dict(), self.path)
 
 
 class GeometryRefresh:

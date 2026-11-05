@@ -17,7 +17,7 @@ def position_configuration() -> MagnetConfiguration:
 
 
 def make_position_model(
-    position_bound_m: float = 0.002,
+    position_bound_m: float | tuple[float, float, float] = 0.002,
 ) -> DomePositionModel:
     return DomePositionModel(
         configuration=position_configuration(),
@@ -93,5 +93,34 @@ def test_total_displacement_and_configuration_use_effective_positions() -> None:
 def test_model_rejects_nonpositive_position_bound(
     position_bound_m: float,
 ) -> None:
-    with pytest.raises(ValueError, match="position_bound_m must be positive"):
+    with pytest.raises(ValueError, match="position_bound_m must be a positive number"):
         make_position_model(position_bound_m)
+
+
+def test_bound_may_differ_per_axis() -> None:
+    """A wider ring-plane box with a tighter axial one saturates each axis at its own bound."""
+    model = make_position_model(position_bound_m=(3.0e-3, 3.0e-3, 1.0e-3))
+    with torch.no_grad():
+        model.position_offsets.fill_(1.0)
+    moved = (model.effective_positions() - model.magnet_positions).abs()
+    assert torch.allclose(moved[:, 0], torch.full_like(moved[:, 0], 3.0e-3), atol=1e-9)
+    assert torch.allclose(moved[:, 2], torch.full_like(moved[:, 2], 1.0e-3), atol=1e-9)
+    assert model.position_bound_m == 3.0e-3
+
+
+def test_base_positions_keep_the_box_around_the_seats() -> None:
+    """A loaded design that already moved is an offset inside the box around its seats."""
+    configuration = position_configuration()
+    base = configuration.positions.clone()
+    configuration.positions = base + 0.5e-3
+    model = DomePositionModel(
+        configuration=configuration, fov=(0.0, 0.0, 0.0), resolution=(0.01, 0.01, 0.01), fov_radius=0.01,
+        device="cpu", dtype=torch.float64,
+        point_sampler=PredefinedPointSampler(torch.zeros((1, 3), dtype=torch.float64)),
+        position_bound_m=1.0e-3, base_positions=base,
+    )
+    assert torch.allclose(model.magnet_positions, base)
+    assert torch.allclose(model.effective_positions(), base + 0.5e-3, atol=1e-9)
+    with torch.no_grad():
+        model.position_offsets.fill_(1.0)
+    assert torch.allclose(model.effective_positions() - base, torch.full_like(base, 1.0e-3), atol=1e-9)

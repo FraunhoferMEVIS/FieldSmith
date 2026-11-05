@@ -118,7 +118,8 @@ configuration exchange format.
 the supplied object has a `to_dict()` method. `TrainLoop` uses it for checkpoints
 named `configurations/epoch_<N>.pt`. Several runners also save a final
 `best_configuration.pt` or `small_halbach_final.pt` with the same dictionary
-format.
+format, and `run_dome_optimisation.py` saves its best design under
+`--best-design`.
 
 ## Loading a configuration
 

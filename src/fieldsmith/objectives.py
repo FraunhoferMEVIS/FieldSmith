@@ -64,11 +64,18 @@ def field_band_loss(field: torch.Tensor, lower_t: float, upper_t: float) -> torc
 
 
 class SmoothedMinimaxObjective:
-    """Weighted smoothed-minimax loss in ppm with a geometric alpha ramp."""
+    """
+    Weighted smoothed-minimax loss in ppm with a geometric alpha ramp.
+
+    With ``auto_sharpness`` set, alpha is instead chosen every call so that
+    alpha times the current relative spread stays constant. This keeps the
+    gradient spread over many points as the design improves.
+    """
 
     def __init__(
         self, alpha: float = 2.0e3, alpha_max: float = 2.0e4, alpha_growth: float = 1.01,
         rms_weight: float = 0.0, band_weight: float = 0.0, band_t: tuple[float, float] | None = None,
+        auto_sharpness: float | None = None,
     ) -> None:
         self.alpha: float = alpha
         self.alpha_max: float = alpha_max
@@ -76,15 +83,21 @@ class SmoothedMinimaxObjective:
         self.rms_weight: float = rms_weight
         self.band_weight: float = band_weight
         self.band_t: tuple[float, float] | None = band_t
+        self.auto_sharpness: float | None = auto_sharpness
 
     def step(self) -> float:
         """Ramp alpha geometrically toward alpha_max and return the new value."""
-        self.alpha = min(self.alpha * self.alpha_growth, self.alpha_max)
+        if self.auto_sharpness is None:
+            self.alpha = min(self.alpha * self.alpha_growth, self.alpha_max)
         return self.alpha
 
     def __call__(self, output: dict[str, torch.Tensor]) -> torch.Tensor:
         """Evaluate the weighted loss in ppm on a model output holding "B" as (P, 3)."""
         field = output["B"]
+        if self.auto_sharpness is not None:
+            with torch.no_grad():
+                spread = float(peak_to_peak_ppm(field)) * 1e-6
+            self.alpha = min(self.auto_sharpness / max(spread, 1e-9), self.alpha_max)
         loss = soft_peak_to_peak_ppm(field, self.alpha)
         if self.rms_weight != 0.0:
             loss = loss + self.rms_weight * rms_deviation_ppm(field)
@@ -133,21 +146,21 @@ class FieldFloor:
 
 class CollisionPenalty:
     """
-    Penalise magnet bodies that intersect.
+    Penalise magnet bodies that come too close.
 
     Only meaningful once positions or orientations can move bodies into one
-    another. The penalty is quadratic in the penetration beyond a margin, so it
-    is zero and gradient-free for a design that is comfortably apart and grows
-    smoothly as one closes. The margin is deliberate slack: driving penetration
-    to exactly zero fights the objective for no manufacturing benefit, since the
-    acceptance gate allows a small tolerance anyway.
+    another. The penalty is quadratic beyond the margin, so it is zero and
+    gradient-free for a design that is comfortably apart and grows smoothly as
+    one closes. A positive margin tolerates that much penetration, a negative
+    one demands that much clearance. The runs use a 0.2 mm gap, because bodies
+    settle at the margin and touching pairs merge their pockets in the plate.
 
     The pair list is passed in rather than rebuilt: it is valid only for the
     geometry it was built from, so refreshing it is the caller's decision, taken
     at the same points where the demagnetisation coupling is refreshed.
     """
 
-    def __init__(self, half_extent_m: float, margin_m: float = 3.0e-4, weight: float = 1.0) -> None:
+    def __init__(self, half_extent_m: float, margin_m: float = -2.0e-4, weight: float = 1.0) -> None:
         self.half_extent_m: float = half_extent_m
         self.margin_m: float = margin_m
         self.weight: float = weight

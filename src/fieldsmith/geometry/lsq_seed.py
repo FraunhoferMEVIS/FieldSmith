@@ -36,15 +36,23 @@ def dipole_design_operator(
     Returns:
         Design operator, shape (3P, 3M).
     """
-    difference = roi_points[:, None, :] - positions[None, :, :]
-    distance = difference.norm(dim=-1)
-    unit = difference / distance[..., None]
+    n_points, n_magnets = roi_points.shape[0], positions.shape[0]
     identity = torch.eye(3, dtype=positions.dtype, device=positions.device)
-    blocks = (volumes[None, :] / (4.0 * math.pi * distance**3))[..., None, None] * (
-        3.0 * unit[..., :, None] * unit[..., None, :] - identity
-    )
-    n_points, n_magnets = distance.shape
-    return blocks.permute(0, 2, 1, 3).reshape(3 * n_points, 3 * n_magnets)
+    design = torch.empty(3 * n_points, 3 * n_magnets,
+                         dtype=positions.dtype, device=positions.device)
+    # Built in point chunks to bound the (chunk, M, 3, 3) intermediates.
+    chunk = max(1, min(n_points, int(2.0e7 // max(1, n_magnets)) + 1))
+    for start in range(0, n_points, chunk):
+        stop = min(start + chunk, n_points)
+        difference = roi_points[start:stop, None, :] - positions[None, :, :]
+        distance = difference.norm(dim=-1)
+        unit = difference / distance[..., None]
+        blocks = (volumes[None, :] / (4.0 * math.pi * distance**3))[..., None, None] * (
+            3.0 * unit[..., :, None] * unit[..., None, :] - identity
+        )
+        design[3 * start:3 * stop] = blocks.permute(0, 2, 1, 3).reshape(
+            3 * (stop - start), 3 * n_magnets)
+    return design
 
 
 def _mirror_pairing(positions: torch.Tensor, signs: torch.Tensor) -> torch.Tensor:
@@ -69,6 +77,7 @@ def lsq_seed_orientations(
     rho_start: float = 1e-4,
     rho_end: float = 1e4,
     mirror: str | None = None,
+    in_plane: bool = False,
 ) -> torch.Tensor:
     """
     Solve for unit orientations producing the most uniform field along a target.
@@ -102,6 +111,8 @@ def lsq_seed_orientations(
             so the result is symmetric to the last bit. A mirror-symmetric design
             produces no mean field along the mirror normal, so such targets are
             rejected.
+        in_plane: Restrict the solve to magnetizations in the z = 0 plane. The
+            constraint is applied in every iteration, not to the answer.
 
     Returns:
         Unit remanence directions, shape (M, 3).
@@ -140,10 +151,16 @@ def lsq_seed_orientations(
         roi_points = torch.cat((roi_points, roi_points * signs))
 
     def symmetrized(moments: torch.Tensor) -> torch.Tensor:
-        if pairing is None:
+        if pairing is None and not in_plane:
             return moments
         vectors = moments.reshape(n_magnets, 3)
-        return (0.5 * (vectors + vectors[pairing] * signs)).reshape(moments.shape)
+        if pairing is not None:
+            vectors = 0.5 * (vectors + vectors[pairing] * signs)
+        if in_plane:
+            # Projecting every iterate, not the final answer, keeps the solve's
+            # benefit. Flattening afterwards discards most of it.
+            vectors = torch.cat((vectors[:, :2], torch.zeros_like(vectors[:, 2:])), dim=1)
+        return vectors.reshape(moments.shape)
 
     design = dipole_design_operator(positions, roi_points, volumes)
     target = target_direction / target_direction.norm()

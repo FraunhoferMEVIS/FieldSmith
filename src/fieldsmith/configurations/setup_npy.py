@@ -1,13 +1,11 @@
 # Copyright (c) Fraunhofer MEVIS, Germany. All rights reserved.
 # -----------------------------------------------------------------------------
-# This file loads and saves the optimized-setup .npy exchange format.
+# This file loads and saves the legacy optimized-setup .npy exchange format.
 #
 #  setup_npy.py
 #  Marian Frei
 #  24.07.2026
 # -----------------------------------------------------------------------------
-
-#TODO: Transfer .npy to .pt, or rename in legacy
 
 from __future__ import annotations
 
@@ -25,7 +23,7 @@ def load_halbach_setup_npy(
     dtype: torch.dtype = torch.float64,
 ) -> MagnetConfiguration:
     """
-    Load an optimized-setup .npy into a MagnetConfiguration.
+    Load a legacy optimized-setup .npy into a MagnetConfiguration.
 
     The file is a pickled dict of magnet_positions (M, 3), magnet_angles_theta (M,),
     magnet_angles_phi (M,), remanence (scalar) and magnet_amplitudes (M,). The
@@ -47,13 +45,28 @@ def load_halbach_setup_npy(
         (theta.sin() * phi.cos(), theta.sin() * phi.sin(), theta.cos()), dim=1
     )
     size = float(data.get("magnet_size_m", 0.012))
-    volumes = torch.full((positions.shape[0],), size**3, dtype=dtype, device=device)
+    # Mixed arrangements such as ROMA store volumes. Without the key every magnet is one cube.
+    stored = data.get("magnet_volumes")
+    if stored is None:
+        volumes = torch.full((positions.shape[0],), size**3, dtype=dtype, device=device)
+    else:
+        volumes = torch.tensor(np.asarray(stored, dtype=np.float64), dtype=dtype, device=device)
+        if volumes.shape != (positions.shape[0],):
+            raise ValueError("magnet_volumes must hold one volume per magnet.")
+    # They also store side lengths, which the cuboid model needs.
+    meta = {"magnet_size_m": size, "source": str(path)}
+    shapes = data.get("magnet_sizes_m")
+    if shapes is not None:
+        sides = torch.tensor(np.asarray(shapes, dtype=np.float64), dtype=dtype, device=device)
+        if sides.shape != positions.shape:
+            raise ValueError("magnet_sizes_m must hold three side lengths per magnet.")
+        meta["magnet_dimensions_m"] = sides
     return MagnetConfiguration(
         positions=positions,
         orientations=orientations,
         volumes=volumes,
         remanence=float(data["remanence"]),
-        metadata={"magnet_size_m": size, "source": str(path)},
+        metadata=meta,
     )
 
 
@@ -72,6 +85,10 @@ def save_halbach_setup_npy(path: str | Path, configuration: MagnetConfiguration)
             "magnet_angles_phi": phi.numpy(),
             "remanence": float(remanence.item() if isinstance(remanence, torch.Tensor) else remanence),
             "magnet_amplitudes": np.ones(config.num_magnets),
+            "magnet_volumes": config.volumes.numpy(),
+            "magnet_size_m": float(config.metadata.get("magnet_size_m", 0.012)),
+            **({"magnet_sizes_m": config.metadata["magnet_dimensions_m"].numpy()}
+               if isinstance(config.metadata.get("magnet_dimensions_m"), torch.Tensor) else {}),
         },
         allow_pickle=True,
     )

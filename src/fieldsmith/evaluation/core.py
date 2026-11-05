@@ -17,7 +17,8 @@ from fieldsmith.field_simulations.cuboid import calc_b_at_points_cuboid
 from fieldsmith.field_simulations.demagnetization import apply_first_order_demag, build_demag_coupling
 from fieldsmith.field_simulations.dipole import calc_b_at_points_fast
 from fieldsmith.geometry.collision import count_overlaps
-from fieldsmith.geometry.cube_axes import cube_axes_from_directions, cube_axes_min_z_extent
+from fieldsmith.geometry.cube_axes import (cube_axes_from_directions, cube_axes_min_z_extent,
+                                            cube_axes_seated)
 from fieldsmith.objectives import peak_to_peak_ppm, rms_deviation_ppm
 
 
@@ -53,29 +54,54 @@ def field_at_points(
     Returns:
         B-field in tesla, shape (P, 3).
     """
-    if field_model not in ("dipole", "cuboid"):
-        raise ValueError('field_model must be "dipole" or "cuboid".')
-    if frame_rule not in ("argmin", "gs"):
-        raise ValueError('frame_rule must be "argmin" or "gs".')
+    if field_model not in ("dipole", "cuboid", "mixed"):
+        raise ValueError('field_model must be "dipole", "cuboid" or "mixed".')
+    if frame_rule not in ("argmin", "gs", "world", "seated"):
+        raise ValueError('frame_rule must be "argmin", "gs", "world" or "seated".')
     points = points.to(device=configuration.positions.device, dtype=configuration.positions.dtype)
     magnet_size = configuration.metadata.get("magnet_size_m")
     vectors = configuration.remanence_vectors()
     demagnetizing = chi_par != 0.0 or chi_perp != 0.0
     sizes = None
     axes = None
-    if field_model == "cuboid" or demagnetizing:
+    if field_model in ("cuboid", "mixed") or demagnetizing:
         if not magnet_size:
             raise ValueError('the configuration metadata needs a positive "magnet_size_m".')
-        sizes = configuration.positions.new_full(configuration.positions.shape, float(magnet_size))
-        build_axes = cube_axes_min_z_extent if frame_rule == "gs" else cube_axes_from_directions
-        axes = build_axes(configuration.orientations)
+        stored = configuration.metadata.get("magnet_dimensions_m")
+        if stored is None:
+            sizes = configuration.positions.new_full(configuration.positions.shape, float(magnet_size))
+        else:
+            # Mixed body shapes need each body's own side lengths.
+            sizes = stored.to(device=configuration.positions.device,
+                              dtype=configuration.positions.dtype)
+        if frame_rule == "world":
+            # Bodies keep their built orientation and only the magnetization turns.
+            axes = None
+        elif frame_rule == "seated":
+            # Cubes turn with their moments, bars only about the bore axis.
+            axes = cube_axes_seated(configuration.orientations, sizes)
+        else:
+            build_axes = cube_axes_min_z_extent if frame_rule == "gs" else cube_axes_from_directions
+            axes = build_axes(configuration.orientations)
     if demagnetizing:
-        # gs couples the oriented cube bodies; argmin keeps the world-aligned
-        # coupling the ring and dome models are built on.
+        # The coupling is built in the frame the bodies actually have.
         coupling = build_demag_coupling(
-            configuration.positions, sizes, axes=axes if frame_rule == "gs" else None
+            configuration.positions, sizes,
+            axes=axes if frame_rule in ("gs", "seated") else None
         )
         vectors = apply_first_order_demag(vectors, coupling, chi_par, chi_perp)
+    if field_model == "mixed":
+        # Bars as cuboids, cubes as dipoles. Within 1 ppm of the full cuboid model on ROMA.
+        is_cube = (sizes.max(dim=1).values - sizes.min(dim=1).values).abs() < 1e-9
+        field = calc_b_at_points_fast(
+            dipole_br=vectors[is_cube], vol=configuration.volumes[is_cube],
+            dipole_pos=configuration.positions[is_cube], points=points, chunk_points=chunk_points)
+        if bool((~is_cube).any()):
+            field = field + calc_b_at_points_cuboid(
+                magnet_br=vectors[~is_cube], magnet_size=sizes[~is_cube],
+                magnet_pos=configuration.positions[~is_cube], points=points,
+                axes=None if axes is None else axes[~is_cube], chunk_points=chunk_points)
+        return field
     if field_model == "dipole":
         return calc_b_at_points_fast(
             dipole_br=vectors,
@@ -120,6 +146,27 @@ def evaluate_configuration(
         }
 
 
+def _unbuildable_tilt_deg(configuration: MagnetConfiguration, frame_rule: str) -> float:
+    """
+    The largest out-of-plane magnetization angle, in degrees, among bodies that are not cubes.
+
+    A bar cannot be tilted out of its plane without moving material into its
+    neighbour. Returns 0 when every body is a cube or the frame lets bodies tilt.
+    """
+    if frame_rule not in ("world", "seated"):
+        return 0.0
+    sizes = configuration.metadata.get("magnet_dimensions_m")
+    if sizes is None:
+        return 0.0
+    sizes = sizes.to(configuration.orientations.device)
+    elongated = (sizes.max(dim=1).values - sizes.min(dim=1).values).abs() > 1e-9
+    if not bool(elongated.any()):
+        return 0.0
+    directions = configuration.orientations[elongated]
+    directions = directions / torch.linalg.norm(directions, dim=1, keepdim=True).clamp_min(1e-12)
+    return float(torch.rad2deg(torch.asin(directions[:, 2].abs().clamp(max=1.0))).max())
+
+
 def truth_eval_report(
     configuration: MagnetConfiguration,
     points: torch.Tensor,
@@ -137,27 +184,40 @@ def truth_eval_report(
     pocket frame by default so a cap reference design reproduces its known number.
 
     Returns:
-        {"chi0": {...}, "demag": {...}, "overlaps": n} where each physics carries
-        fieldstrength_mT / peak_to_peak_ppm / rms_ppm, and overlaps is the number
-        of magnet pairs intersecting by more than 0.4 mm at true body size.
-        A design is only a result if that count is zero.
+        {"chi0": {...}, "demag": {...}, "overlaps": n, "contacts": m} where each
+        physics carries fieldstrength_mT / peak_to_peak_ppm / rms_ppm. Overlaps
+        counts pairs intersecting by more than 0.4 mm at true body size, the
+        acceptance gate. Contacts counts pairs touching at all, which merges
+        their pockets in the printed plate.
     """
     build_axes = cube_axes_min_z_extent if frame_rule == "gs" else cube_axes_from_directions
     magnet_size = configuration.metadata.get("magnet_size_m")
     with torch.no_grad():
-        overlaps = (
-            count_overlaps(
-                configuration.positions,
-                build_axes(configuration.orientations),
-                float(magnet_size),
-            )
-            if magnet_size
-            else -1
-        )
+        if magnet_size:
+            if frame_rule == "world":
+                # Bodies keep their built orientation, so overlaps are checked in the world frame.
+                axes = torch.eye(3, dtype=configuration.positions.dtype,
+                                 device=configuration.positions.device
+                                 ).expand(configuration.positions.shape[0], 3, 3)
+            elif frame_rule == "seated":
+                stored = configuration.metadata.get("magnet_dimensions_m")
+                sizes = (configuration.positions.new_full(configuration.positions.shape, float(magnet_size))
+                         if stored is None else stored.to(configuration.positions))
+                axes = cube_axes_seated(configuration.orientations, sizes)
+            else:
+                axes = build_axes(configuration.orientations)
+            overlaps = count_overlaps(configuration.positions, axes, float(magnet_size))
+            contacts = count_overlaps(configuration.positions, axes, float(magnet_size),
+                                      tolerance=0.0)
+        else:
+            overlaps = contacts = -1
+        tilt = _unbuildable_tilt_deg(configuration, frame_rule)
     return {
         "chi0": evaluate_configuration(configuration, points, "cuboid", 0.0, 0.0, chunk_points, frame_rule),
         "demag": evaluate_configuration(
             configuration, points, "cuboid", chi_par, chi_perp, chunk_points, frame_rule
         ),
         "overlaps": overlaps,
+        "contacts": contacts,
+        "tilt_deg": tilt,
     }
