@@ -57,7 +57,7 @@ $$
 \begin{bmatrix}
 \ln(y_q+\rho_{pqs})\\
 \ln(x_p+\rho_{pqs})\\
--\operatorname{atan2}(x_py_q,z_s\rho_{pqs})
+-\mathrm{atan2}(x_py_q,z_s\rho_{pqs})
 \end{bmatrix}.
 $$
 
