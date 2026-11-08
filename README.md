@@ -21,7 +21,7 @@ The software is not qualified for use as a medical product or as part thereof. P
 
 - Build and optimize gometries such as: Halbach ring, multi-ring, ROMA, and dome magnet arrays.
 - Calculate differentiable fields with fast dipole or finite cuboid models.
-- Run gradient based optimizationson  magnet orientations, magnet positions, etc. within the given PyTorch framework.
+- Run gradient based optimizations on magnet orientations, magnet positions, etc. within the given PyTorch framework.
 - Evaluate field strength, peak-to-peak homogeneity, and RMS deviation.
 - Run Monte Carlo studies of manufacturing tolerances.
 - Move magnets within bounded boxes under a clearance penalty, and export a design as printable plates with seats, lids and fastening rails.
@@ -136,7 +136,7 @@ The additional notice for the utilized software in [`docs/licences/`](docs/licen
 
 ## Citing
 
-As soon as the paper is published the citing temlate of the software-related paper will be added here.
+As soon as the paper is published the citing template of the software-related paper will be added here.
 
 ## Support or contact
 
