@@ -60,9 +60,9 @@ export optimized configurations back to CPU tensors for storage or evaluation.
 
 ## Optimization lifecycle
 
-Optimization models (like `SingleRingHalbachModel` in `src\fieldsmith\models\halbach_ring\` 
-and `HalbachSystemAngleModel` in `src\fieldsmith\models\halbach_systems\`) are `torch.nn.Module` 
-subclasses. A model owns its trainableparameters and implements `forward()`, returning a 
+Optimization models (like `SingleRingHalbachModel` in `src/fieldsmith/models/halbach_ring/`
+and `HalbachSystemAngleModel` in `src/fieldsmith/models/halbach_systems/`) are `torch.nn.Module`
+subclasses. A model owns its trainable parameters and implements `forward()`, returning a
 dictionary containing the field and the geometry required by losses and visualizations. Models used with
 `TrainLoop` also provide scalar logging, image logging, and configuration export
 methods.

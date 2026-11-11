@@ -19,9 +19,9 @@ The software is not qualified for use as a medical product or as part thereof. P
 
 ## Capabilities
 
-- Build and optimize gometries such as: Halbach ring, multi-ring, ROMA, and dome magnet arrays.
+- Build and optimize geometries such as Halbach rings, multi-ring, ROMA, and dome magnet arrays.
 - Calculate differentiable fields with fast dipole or finite cuboid models.
-- Run gradient based optimizations on magnet orientations, magnet positions, etc. within the given PyTorch framework.
+- Run gradient-based optimization of magnet orientations, positions, and other parameters within the PyTorch framework.
 - Evaluate field strength, peak-to-peak homogeneity, and RMS deviation.
 - Run Monte Carlo studies of manufacturing tolerances.
 - Move magnets within bounded boxes under a clearance penalty, and export a design as printable plates with seats, lids and fastening rails.
@@ -132,7 +132,7 @@ uv run --extra cpu pytest tests --cov=fieldsmith --cov-report=html
 The additional notice for the utilized software in [`docs/licences/`](docs/licences/) summarizes the:
 
 - [MIT License](docs/licences/LUMC-LowFieldMRI.txt) for the `scripts/paper/lumc/homogeneityOptimization.py` and `src/fieldsmith/evaluation/lumc_halbach.py`. Corresponding repository: [HalbachOptimization](https://github.com/LUMC-LowFieldMRI/HalbachOptimisation).
-- [CERN Open Hardware Licence Version 2](docs/licences/OSII_rc2.1.txt) for the files, describing the ROMA Arrangment in `data/osii_rc2.1/`. Corresponding repository: [OSII/rc/2.1](https://gitlab.com/osii/magnet/30cm-halbach-magnet/-/tree/rc/2.1?ref_type=heads)
+- [CERN Open Hardware Licence Version 2](docs/licences/OSII_rc2.1.txt) for the files describing the ROMA arrangement in `data/osii_rc2.1/`. Corresponding repository: [OSII/rc/2.1](https://gitlab.com/osii/magnet/30cm-halbach-magnet/-/tree/rc/2.1?ref_type=heads)
 
 ## Citing
 
