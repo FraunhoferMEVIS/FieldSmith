@@ -17,7 +17,7 @@ import numpy as np
 from scipy.optimize import OptimizeResult, differential_evolution
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
 
 from fieldsmith.evaluation.lumc_halbach import INNER_RING_RADII, create_configuration
 from fieldsmith.metrics import component_field_strength, component_peak_to_peak_ppm

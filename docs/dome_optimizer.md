@@ -23,6 +23,11 @@ top-level public API limited to the established FieldSmith interfaces.
 | `models/dome/model.py` | Two-angle, optionally demag-aware model | Subclasses `SingleRingHalbachModel`; same `forward()` output contract |
 | `evaluation/core.py` | Scores a stored configuration under an explicitly chosen physics | `objectives.py`, both field kernels |
 | `configurations/dome_config.py` | `.cfg` loader for the above | Mirrors `HalbachSystemConfig` |
+| `models/dome/position_model.py` | Centres that move within a bounded box, per axis, optionally in plane or around fixed seats | The two-angle model |
+| `geometry/cap_lattice.py` | The head array's shell lattice, built from an envelope rule | `MagnetConfiguration` |
+| `geometry/roi.py` | Regions of interest, their boundary points and the pinned evaluation sets | Nothing |
+| `callbacks.py` | Truth evaluation on the pinned set, best-design tracking with the acceptance gate, geometry refresh | The `TrainLoop` callback hook |
+| `cad/` | Height levels, plate bounds, and the STL export of plates, lids and rails | `trimesh`, `shapely`, `manifold3d` |
 
 The workflow is configured through `configs/dome_geometry.cfg` and started with
 `scripts/run_dome_optimisation.py`. Optimization, logging, and visualization use
@@ -55,10 +60,9 @@ orientations as `(cos, sin, 0)`, so a cap is unrepresentable. `DomeAngleModel` a
 the polar angle and is a strict generalization: with `theta = pi/2`, the dipole
 kernel and no susceptibility it reproduces the parent model's field.
 
-**Seeding.** `DomeGeometry.build()` sets orientations from the magic-sphere rule,
-the 3-D form of the ring rule the other builders use, so the geometry is complete
-on its own. That rule is local and assumes a full spherical shell, which an open
-cap is not, so the runner reseeds with `geometry/lsq_seed.py` before optimizing.
+**Seeding.** `DomeGeometry.build()` points every magnet out along its shell as a
+placeholder. A local rule cannot account for an open cap, so the runner seeds the
+orientations with `geometry/lsq_seed.py` before optimizing.
 
 The field is linear in the remanence vectors, so a uniform target can be expressed
 as a least-squares problem over all magnets and all ROI points. It accounts for
@@ -80,8 +84,10 @@ orientation, not the corrected moment — the pocket is machined for the nominal
 angle, and demagnetization shifts the moment slightly but not the body.
 
 **Self-coupling** is removed by zeroing the diagonal blocks, which for a cube is
-exactly its +2/3·Br self field. **Positions are frozen**, as in the parent model,
-so the coupling matrix is built once in `__init__` and reused.
+exactly its +2/3·Br self field. In the angle model the positions are frozen, so the
+coupling matrix is built once in `__init__` and reused. When the position model
+moves the centres, `GeometryRefresh` rebuilds the coupling and the collision pair
+list at a fixed interval and folds the achieved displacement into the positions.
 
 ## Precision
 
@@ -99,10 +105,11 @@ The least-squares seed decides this for itself and always solves in float64.
 
 ## Current limitations
 
-The dome optimizer does not currently include collision/SAT verification,
-projection to a buildable lattice, `B = G·m` precomputation, low-rank operators,
-an augmented-Lagrangian B0 constraint, or a multi-cycle production chain with
-checkpointing. Field strength is constrained with a soft band. Unlike a hard
+The dome optimizer does not include projection to a buildable lattice,
+`B = G·m` precomputation, low-rank operators, or an augmented-Lagrangian B0
+constraint. Body overlaps are penalized during training and checked exactly at
+every truth evaluation, and the paper's multi-stage chains are the shell scripts
+described in the [reproduction guide](reproduction.md). Field strength is constrained with a soft band. Unlike a hard
 floor, this does not allow an infeasible field-strength constraint to dominate the
 homogeneity gradient indefinitely.
 

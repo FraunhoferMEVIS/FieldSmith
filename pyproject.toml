@@ -9,13 +9,17 @@ dependencies = [
     "geomloss>=0.3.1",
     "ipykernel>=7.3.0",
     "magpylib>=5.2,<6",
+    "manifold3d>=3.4",
     "matplotlib",
     "nbformat>=4.2.0",
     "numpy",
     "plotly>=6.8.0",
     "pytest>=9.1.1",
+    "rtree>=1.4",
     "scipy",
+    "shapely>=2.1",
     "tqdm>=4.70.0",
+    "trimesh>=4.11",
     "wandb",
 ]
 

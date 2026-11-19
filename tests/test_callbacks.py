@@ -74,6 +74,8 @@ def test_periodic_truth_evaluation_records_demagnetized_report(
         "ppm": 321.5,
         "field_mT": 42.25,
         "overlaps": 0,
+        "contacts": -1,
+        "tilt_deg": 0.0,
     }
     assert evaluation.history == [evaluation.latest]
 
@@ -143,8 +145,8 @@ def test_best_state_tracker_keeps_best_buildable_configuration(
     model.get_configuration.return_value = configuration
     model.magnet_size = 0.014
     save = Mock()
-    monkeypatch.setattr(callbacks, "save_halbach_setup_npy", save)
-    output_path = tmp_path / "best.npy"
+    monkeypatch.setattr(callbacks.torch, "save", save)
+    output_path = tmp_path / "best.pt"
     tracker = BestStateTracker(evaluation, output_path)
 
     tracker(epoch=4, model=model)
@@ -153,7 +155,7 @@ def test_best_state_tracker_keeps_best_buildable_configuration(
     assert tracker.best is not latest
     assert tracker.best_configuration is detached_configuration
     assert detached_configuration.metadata["magnet_size_m"] == 0.014
-    save.assert_called_once_with(output_path, detached_configuration)
+    save.assert_called_once_with(detached_configuration.to_dict.return_value, output_path)
 
     evaluation.latest = {
         "epoch": 6,

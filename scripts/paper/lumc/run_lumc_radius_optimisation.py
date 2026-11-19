@@ -17,7 +17,7 @@ import numpy as np
 import torch
 from torch import nn
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
 
 from fieldsmith.configurations import MagnetConfiguration
 from fieldsmith.evaluation.lumc_halbach import INNER_RING_RADII, create_configuration

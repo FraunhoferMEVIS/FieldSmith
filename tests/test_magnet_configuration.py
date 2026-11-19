@@ -135,6 +135,26 @@ def test_to_converts_tensor_fields_and_copies_metadata(
     assert converted.metadata is not configuration.metadata
 
 
+
+def test_to_converts_floating_metadata_tensors(configuration: MagnetConfiguration) -> None:
+    configuration.metadata["magnet_dimensions_m"] = torch.full((2, 3), 0.012, dtype=torch.float32)
+    configuration.metadata["labels"] = torch.tensor([0, 1])
+
+    converted = configuration.to("cpu", dtype=torch.float64)
+
+    assert converted.metadata["magnet_dimensions_m"].dtype == torch.float64
+    assert converted.metadata["labels"].dtype == torch.int64
+    assert converted.metadata["name"] == "test configuration"
+
+
+def test_detached_cpu_detaches_metadata_tensors(configuration: MagnetConfiguration) -> None:
+    configuration.metadata["magnet_dimensions_m"] = torch.full((2, 3), 0.012, requires_grad=True)
+
+    detached = configuration.detached_cpu()
+
+    assert detached.metadata["magnet_dimensions_m"].device.type == "cpu"
+    assert not detached.metadata["magnet_dimensions_m"].requires_grad
+
 @pytest.mark.parametrize("tensor_remanence", [False, True])
 def test_detached_cpu_removes_gradients_and_copies_metadata(
     configuration: MagnetConfiguration,

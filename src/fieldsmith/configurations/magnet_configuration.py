@@ -67,7 +67,9 @@ class MagnetConfiguration:
             orientations=self.orientations.to(device=device, dtype=dtype),
             volumes=self.volumes.to(device=device, dtype=dtype),
             remanence=remanence,
-            metadata=dict(self.metadata),
+            metadata={key: value.to(device=device, dtype=dtype if value.is_floating_point() else None)
+                      if isinstance(value, torch.Tensor) else value
+                      for key, value in self.metadata.items()},
         )
 
     def detached_cpu(self) -> MagnetConfiguration:
@@ -80,7 +82,8 @@ class MagnetConfiguration:
             orientations=self.orientations.detach().cpu(),
             volumes=self.volumes.detach().cpu(),
             remanence=remanence,
-            metadata=dict(self.metadata),
+            metadata={key: value.detach().cpu() if isinstance(value, torch.Tensor) else value
+                      for key, value in self.metadata.items()},
         )
 
     @classmethod

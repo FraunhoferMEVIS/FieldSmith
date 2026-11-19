@@ -16,7 +16,7 @@ import sys
 
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from fieldsmith.geometry import HalbachRingGeometry
 from fieldsmith.geometry.halbach_ring import make_spherical_mask
