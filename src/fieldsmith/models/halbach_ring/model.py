@@ -127,6 +127,16 @@ class SingleRingHalbachModel(nn.Module):
         """
         return self.magnet_positions
 
+    def magnet_state(self) -> dict[str, torch.Tensor]:
+        """Return the differentiable nominal magnets for a tolerance-aware wrapper."""
+        orientations = self.create_magnet_orientations()
+        return {
+            "positions": self.effective_positions(),
+            "orientations": orientations,
+            "remanence": orientations.new_full((orientations.shape[0],), self.remanence),
+            "volumes": self.volumes,
+        }
+
     def forward(self) -> dict[str, torch.Tensor]:
         magnet_vectors = self.create_magnet_vectors()
         magnet_positions = self.effective_positions()

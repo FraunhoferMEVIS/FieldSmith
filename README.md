@@ -56,11 +56,13 @@ around 1,000 ppm or below.
 | Workflow | Entry point |
 | --- | --- |
 | Generic Halbach system example | `scripts/example_system_optimization.py` |
+| Tolerance-aware optimization example | `scripts/example_tolerance_aware_optimization.py` |
 | Single Halbach ring angle optimization | `scripts/run_fast_halbach_ring_optimisation.py` |
 | Three-stage small Halbach system optimization | `scripts/run_small_halbach_optimisation.py` |
 | ROMA multi-ring system angle optimization | `scripts/run_fast_roma_optimisation.py` |
 | Open-cap/dome system optimization | `scripts/run_dome_optimisation.py` |
 | Manufacturing Monte Carlo | `scripts/run_monte_carlo_evaluation.py` |
+| Tolerance-aware large Halbach system optimization (1980 magnets) | `scripts/run_tolerance_aware_halbach_system_optimisation.py` |
 
 See [docs/examples.md](docs/examples.md) for command examples and the geometry
 verification workflow.

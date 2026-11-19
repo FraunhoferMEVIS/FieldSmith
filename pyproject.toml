@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "deap>=1.4.3",
+    "geomloss>=0.3.1",
     "ipykernel>=7.3.0",
     "magpylib>=5.2,<6",
     "matplotlib",

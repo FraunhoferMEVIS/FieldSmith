@@ -112,4 +112,51 @@ class PredefinedPointSampler(PointSampler):
         raise NotImplementedError("PredefinedPointSampler does not support get_grid().")
 
 
-__all__ = ["CartesianGridSampler", "MaskedPointSampler", "PointSampler", "PredefinedPointSampler"]
+class FibonacciSphereSampler(PointSampler):
+    """
+    Near-uniform points on a sphere surface, centred at the origin.
+
+    Each field component is harmonic inside a source-free region, so the extrema
+    of the dominant component lie on the boundary. A shell therefore carries most
+    of the peak-to-peak information at a fraction of a volume grid's points; the
+    full volume should still be checked from time to time.
+    """
+
+    def __init__(
+        self,
+        radius: float,
+        num_points: int,
+        device: torch.device | str = "cuda",
+        dtype: torch.dtype = torch.float32,
+    ) -> None:
+        if radius <= 0.0:
+            raise ValueError("radius must be positive.")
+        if num_points <= 0:
+            raise ValueError("num_points must be positive.")
+        self.radius: float = float(radius)
+        self.num_points: int = int(num_points)
+        self.device: torch.device | str = device
+        self.dtype: torch.dtype = dtype
+        self._points: torch.Tensor | None = None
+
+    def get_points(self) -> torch.Tensor:
+        if self._points is None:
+            index = torch.arange(self.num_points, device=self.device, dtype=torch.float64) + 0.5
+            z = 1.0 - 2.0 * index / self.num_points
+            rho = torch.sqrt((1.0 - z * z).clamp_min(0.0))
+            azimuth = torch.pi * (3.0 - 5.0**0.5) * index
+            unit = torch.stack((rho * torch.cos(azimuth), rho * torch.sin(azimuth), z), dim=-1)
+            self._points = (self.radius * unit).to(dtype=self.dtype)
+        return self._points
+
+    def get_grid(self) -> torch.Tensor:
+        raise NotImplementedError("FibonacciSphereSampler does not support get_grid().")
+
+
+__all__ = [
+    "CartesianGridSampler",
+    "FibonacciSphereSampler",
+    "MaskedPointSampler",
+    "PointSampler",
+    "PredefinedPointSampler",
+]

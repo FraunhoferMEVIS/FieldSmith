@@ -324,11 +324,26 @@ class SmallHalbachAngleModel(_SmallHalbachModel):
         if phi is None or theta is None:
             phi = torch.atan2(configuration.orientations[:, 1], configuration.orientations[:, 0])
             theta = torch.acos(configuration.orientations[:, 2].clamp(-1.0, 1.0))
-        self.magnet_angles_phi: nn.Parameter = nn.Parameter(torch.as_tensor(phi, device=self.points.device).clone())
-        self.register_buffer("magnet_angles_theta", torch.as_tensor(theta, device=self.points.device).clone())
+        angle_dtype = configuration.positions.dtype
+        self.magnet_angles_phi: nn.Parameter = nn.Parameter(
+            torch.as_tensor(phi, device=self.points.device, dtype=angle_dtype).clone()
+        )
+        self.register_buffer(
+            "magnet_angles_theta", torch.as_tensor(theta, device=self.points.device, dtype=angle_dtype).clone()
+        )
 
     def orientations(self) -> torch.Tensor:
         return _orientations(self.magnet_angles_phi, self.magnet_angles_theta)
+
+    def magnet_state(self) -> dict[str, torch.Tensor]:
+        """Return the differentiable nominal magnets for a tolerance-aware wrapper."""
+        orientations = self.orientations()
+        return {
+            "positions": self.magnet_positions,
+            "orientations": orientations,
+            "remanence": orientations.new_full((orientations.shape[0],), self.remanence),
+            "volumes": orientations.new_full((orientations.shape[0],), self.magnet_size**3),
+        }
 
     def forward(self) -> dict[str, torch.Tensor]:
         field = calc_b_at_points(
@@ -353,6 +368,183 @@ class SmallHalbachAngleModel(_SmallHalbachModel):
                 "magnet_angles_phi_rad": self.magnet_angles_phi.detach().cpu(),
                 "magnet_angles_theta_rad": self.magnet_angles_theta.detach().cpu(),
             },
+        )
+
+
+def _inverse_softplus(value: torch.Tensor) -> torch.Tensor:
+    return torch.log(torch.expm1(value))
+
+
+class SmallHalbachGeometryModel(_SmallHalbachModel):
+    """
+    Optimize magnet angles, both ring radii, and the mirrored plane spacing together.
+
+    Built for tolerance-aware optimization: the angles alone hardly change how
+    strongly each magnet's manufacturing errors reach the field of view, the
+    geometry does. Magnets are assigned to the inner or outer ring by their radius
+    and to a plane by their z level, so the model does not depend on magnet order.
+
+    The magnets cannot overlap by construction. Every radius and plane offset is a
+    lower bound plus a softplus slack, with bounds for cubes rotated in-plane:
+
+    - adjacent centres in a ring are a chord of at least sqrt(2) * size apart;
+    - the outer ring lies at least sqrt(2) * size outside the inner one;
+    - neighbouring planes are at least one size apart.
+
+    Each bound carries an extra ``clearance_m``. The inner radius is also kept
+    above ``min_inner_radius_m`` (the bore) and never lets a magnet body reach into
+    the field of view. Plane 0 stays at z = 0 and the planes above and below
+    mirror each other.
+    """
+
+    def __init__(
+        self,
+        configuration: MagnetConfiguration,
+        fov: Sequence[float],
+        resolution: Sequence[float],
+        fov_radius: float,
+        optimize_angles: bool = True,
+        optimize_radii: bool = True,
+        optimize_distances: bool = True,
+        clearance_m: float = 5.0e-4,
+        slack_scale_m: float = 0.01,
+        min_inner_radius_m: float = 0.0,
+    ) -> None:
+        device = configuration.positions.device
+        dtype = configuration.positions.dtype
+        points = _stage_points(fov, resolution, fov_radius, "none", device).to(dtype)
+        magnet_size = float(configuration.metadata["magnet_size_m"])
+        super().__init__(points, magnet_size, float(configuration.remanence))
+        positions = configuration.positions
+        radii = torch.linalg.norm(positions[:, :2], dim=1)
+        if bool((radii <= 0.0).any()):
+            raise ValueError("every magnet needs a non-zero radius.")
+        split = 0.5 * (radii.min() + radii.max())
+        ring_outer = radii > split
+        if bool(ring_outer.all()) or not bool(ring_outer.any()):
+            raise ValueError("SmallHalbachGeometryModel expects an inner and an outer ring.")
+
+        z_levels = torch.unique(torch.round(positions[:, 2], decimals=9), sorted=True)
+        positive = z_levels[z_levels > 0.0]
+        if not torch.allclose(torch.flip(-positive, dims=(0,)), z_levels[z_levels < 0.0], atol=1e-9) \
+                or not bool((z_levels.abs() < 1e-9).any()):
+            raise ValueError("SmallHalbachGeometryModel expects a plane at z = 0 and mirrored planes.")
+        level = torch.argmin((positions[:, 2].abs()[:, None] - positive[None, :]).abs(), dim=1) + 1
+        level = torch.where(positions[:, 2].abs() < 1e-9, torch.zeros_like(level), level)
+        plane_index = level * torch.sign(positions[:, 2]).to(level.dtype)
+
+        in_plane_zero = plane_index == 0
+        count_inner = int((~ring_outer & in_plane_zero).sum())
+        count_outer = int((ring_outer & in_plane_zero).sum())
+        diagonal = 2.0**0.5 * magnet_size + clearance_m
+        self.clearance_m: float = clearance_m
+        self.slack_scale_m: float = slack_scale_m
+        self.radial_gap_m: float = diagonal
+        self.plane_gap_m: float = magnet_size + clearance_m
+        self.inner_radius_min_m: float = max(
+            diagonal / (2.0 * np.sin(np.pi / max(count_inner, 2))),
+            fov_radius + 0.5 * diagonal,
+            min_inner_radius_m,
+        )
+        self.outer_radius_min_m: float = diagonal / (2.0 * np.sin(np.pi / max(count_outer, 2)))
+
+        self.register_buffer("unit_xy", positions[:, :2] / radii[:, None])
+        self.register_buffer("ring_outer", ring_outer)
+        self.register_buffer("plane_index", plane_index)
+
+        inner_radius = radii[~ring_outer].mean()
+        outer_radius = radii[ring_outer].mean()
+        floor = positions.new_tensor(1e-5)
+        inner_slack = torch.maximum(inner_radius - self.inner_radius_min_m, floor)
+        outer_bound = torch.maximum(inner_radius + self.radial_gap_m, positions.new_tensor(self.outer_radius_min_m))
+        outer_slack = torch.maximum(outer_radius - outer_bound, floor)
+        self.radius_slack: nn.Parameter = nn.Parameter(
+            _inverse_softplus(torch.stack((inner_slack, outer_slack)) / slack_scale_m),
+            requires_grad=optimize_radii,
+        )
+        steps = torch.diff(torch.cat((positive.new_zeros(1), positive)))
+        self.plane_slack: nn.Parameter = nn.Parameter(
+            _inverse_softplus(torch.maximum(steps - self.plane_gap_m, floor) / slack_scale_m),
+            requires_grad=optimize_distances,
+        )
+
+        phi = configuration.metadata.get("magnet_angles_phi_rad")
+        theta = configuration.metadata.get("magnet_angles_theta_rad")
+        if phi is None or theta is None:
+            phi = torch.atan2(configuration.orientations[:, 1], configuration.orientations[:, 0])
+            theta = torch.acos(configuration.orientations[:, 2].clamp(-1.0, 1.0))
+        self.magnet_angles_phi: nn.Parameter = nn.Parameter(
+            torch.as_tensor(phi, device=device, dtype=dtype).clone(), requires_grad=optimize_angles,
+        )
+        self.register_buffer("magnet_angles_theta", torch.as_tensor(theta, device=device, dtype=dtype).clone())
+
+    def ring_radii(self) -> torch.Tensor:
+        """Inner and outer ring radii in meters, shape (2,)."""
+        slack = self.slack_scale_m * torch.nn.functional.softplus(self.radius_slack)
+        inner = self.inner_radius_min_m + slack[0]
+        outer_bound = torch.clamp(inner + self.radial_gap_m, min=self.outer_radius_min_m)
+        return torch.stack((inner, outer_bound + slack[1]))
+
+    def plane_levels(self) -> torch.Tensor:
+        """Positive plane heights in meters, nearest plane first."""
+        steps = self.plane_gap_m + self.slack_scale_m * torch.nn.functional.softplus(self.plane_slack)
+        return torch.cumsum(steps, dim=0)
+
+    def current_positions(self) -> torch.Tensor:
+        inner, outer = self.ring_radii()
+        radius = torch.where(self.ring_outer, outer, inner)
+        levels = torch.cat((self.plane_levels().new_zeros(1), self.plane_levels()))
+        z = torch.sign(self.plane_index).to(levels.dtype) * levels[self.plane_index.abs()]
+        return torch.cat((self.unit_xy * radius[:, None], z[:, None]), dim=1)
+
+    def orientations(self) -> torch.Tensor:
+        return _orientations(self.magnet_angles_phi, self.magnet_angles_theta)
+
+    def magnet_state(self) -> dict[str, torch.Tensor]:
+        """Return the differentiable nominal magnets for a tolerance-aware wrapper."""
+        orientations = self.orientations()
+        return {
+            "positions": self.current_positions(),
+            "orientations": orientations,
+            "remanence": orientations.new_full((orientations.shape[0],), self.remanence),
+            "volumes": orientations.new_full((orientations.shape[0],), self.magnet_size**3),
+        }
+
+    def geometry_summary(self) -> dict[str, float]:
+        """Current radii and plane heights in millimetres, for logging."""
+        with torch.no_grad():
+            inner, outer = self.ring_radii()
+            summary = {"inner_radius_mm": float(inner) * 1e3, "outer_radius_mm": float(outer) * 1e3}
+            for index, level in enumerate(self.plane_levels(), start=1):
+                summary[f"plane_{index}_z_mm"] = float(level) * 1e3
+        return summary
+
+    def forward(self) -> dict[str, torch.Tensor]:
+        positions = self.current_positions()
+        field = calc_b_at_points(
+            self.orientations() * self.remanence,
+            self.magnet_size**3,
+            positions,
+            self.points,
+            chunk_points=32768,
+        )
+        return {"B": field, "positions": positions}
+
+    def get_configuration(self) -> MagnetConfiguration:
+        orientations = self.orientations().detach()
+        metadata = {
+            "geometry": "small_halbach",
+            "magnet_size_m": self.magnet_size,
+            "magnet_angles_phi_rad": self.magnet_angles_phi.detach().cpu(),
+            "magnet_angles_theta_rad": self.magnet_angles_theta.detach().cpu(),
+        }
+        metadata.update({name: value for name, value in self.geometry_summary().items()})
+        return MagnetConfiguration(
+            positions=self.current_positions().detach(),
+            orientations=orientations,
+            volumes=torch.full_like(orientations[:, 0], self.magnet_size**3),
+            remanence=self.remanence,
+            metadata=metadata,
         )
 
 
@@ -386,6 +578,7 @@ def radius_stage_loss(
 __all__ = [
     "SmallHalbachAngleModel",
     "SmallHalbachDistanceModel",
+    "SmallHalbachGeometryModel",
     "SmallHalbachRadiusModel",
     "build_small_halbach_configuration",
     "distance_stage_loss",

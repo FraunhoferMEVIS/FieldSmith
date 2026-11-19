@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable
-import csv
 from datetime import datetime
 import json
 from pathlib import Path
 import sys
-from typing import Any, TextIO
 
 import torch
 from torch import nn
@@ -17,7 +15,7 @@ from torch import nn
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from fieldsmith.configurations import MagnetConfiguration
-from fieldsmith.logger import WandbLogger
+from fieldsmith.logger import CsvHistoryLogger
 from fieldsmith.metrics import component_homogeneity_loss, field_metrics
 from fieldsmith.models.small_halbach import (
     SmallHalbachAngleModel,
@@ -28,41 +26,6 @@ from fieldsmith.models.small_halbach import (
     radius_stage_loss,
 )
 from fieldsmith.train_loop import TrainLoop
-
-
-class CsvHistoryLogger(WandbLogger):
-    """Persist every scalar locally while retaining optional wandb logging."""
-
-    def __init__(
-        self,
-        project: str,
-        run_name: str | None,
-        log_dir: str | Path,
-        config: dict[str, Any] | None = None,
-        mode: str = "online",
-    ) -> None:
-        super().__init__(project, run_name, log_dir, config, mode)
-        history_path = self.log_dir / "history.csv"
-        self._history_file: TextIO = history_path.open("w", newline="", encoding="utf-8")
-        self._history_writer: csv.DictWriter = csv.DictWriter(
-            self._history_file,
-            fieldnames=("epoch", "metric", "value"),
-        )
-        self._history_writer.writeheader()
-
-    def log_scalars(self, scalars: dict[str, Any], epoch: int) -> None:
-        super().log_scalars(scalars, epoch)
-        for name, value in scalars.items():
-            if isinstance(value, torch.Tensor):
-                value = value.detach().cpu().item()
-            self._history_writer.writerow(
-                {"epoch": epoch, "metric": name, "value": float(value)},
-            )
-        self._history_file.flush()
-
-    def close(self) -> None:
-        self._history_file.close()
-        super().close()
 
 
 def mse_angle_loss(

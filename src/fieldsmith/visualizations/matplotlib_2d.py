@@ -12,7 +12,7 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm, colors
-from matplotlib.patches import Polygon
+from matplotlib.patches import Circle, Polygon, Rectangle
 import torch
 
 _AXIS_TO_ID = {"x": 0, "y": 1, "z": 2}
@@ -314,3 +314,114 @@ def plot_angles(
     ax.legend(bbox_to_anchor=(1.0, 0.5), loc="center left")
     fig.tight_layout()
     return fig
+
+
+def _ring_sections(positions: np.ndarray, decimals: int = 5) -> np.ndarray:
+    """Unique (radius, z) pairs of the magnets, one per ring and plane."""
+    sections = np.stack((np.linalg.norm(positions[:, :2], axis=1), positions[:, 2]), axis=1)
+    return np.unique(np.round(sections, decimals), axis=0)
+
+
+def plot_system_layout(
+    positions: torch.Tensor,
+    orientations: torch.Tensor,
+    cube_size: float,
+    fov_radius: float | None = None,
+    title: str = "Magnet system layout",
+) -> plt.Figure:
+    """
+    Show a stacked ring system as a top view of one plane and an r-z cross-section.
+
+    The top view draws the projected cube outlines and magnetization arrows of the
+    plane closest to z = 0 (the upper one of a mirrored pair). The cross-section
+    draws every ring of every plane as a magnet-sized square at its radius and
+    height, which shows ring radii and plane spacing of the whole stack at once.
+    """
+    positions_np = positions.detach().cpu().numpy()
+    orientations_np = orientations.detach().cpu().numpy()
+    heights = np.round(positions_np[:, 2], 6)
+    plane_height = heights[heights >= -1e-9].min()
+    in_plane = np.isclose(heights, plane_height)
+
+    figure, (top, section) = plt.subplots(1, 2, figsize=(13, 6), gridspec_kw={"width_ratios": (1.0, 1.15)})
+    for position, orientation in zip(positions_np[in_plane], orientations_np[in_plane]):
+        top.add_patch(Polygon(
+            _project_cube_outline(position, orientation, size=cube_size, plane="xy"), closed=True,
+            facecolor="#b9d3e6", edgecolor="#355d7a", linewidth=0.6,
+        ))
+        direction = _normalize(orientation)
+        top.arrow(position[0], position[1], direction[0] * cube_size * 0.9, direction[1] * cube_size * 0.9,
+                  width=cube_size * 0.05, head_width=cube_size * 0.25, head_length=cube_size * 0.25,
+                  length_includes_head=True, color="#0b2538")
+    if fov_radius is not None:
+        top.add_patch(Circle((0.0, 0.0), fov_radius, fill=False, linestyle="--", color="#52514e", label="FOV"))
+        top.legend(loc="upper right", frameon=False)
+    extent = np.linalg.norm(positions_np[:, :2], axis=1).max() + cube_size
+    top.set_xlim(-extent, extent)
+    top.set_ylim(-extent, extent)
+    top.set_aspect("equal")
+    top.set_xlabel("x [m]")
+    top.set_ylabel("y [m]")
+    top.set_title(f"Top view of the plane at z = {plane_height * 1e3:.1f} mm ({int(in_plane.sum())} magnets)")
+    top.grid(alpha=0.25)
+
+    for radius, height in _ring_sections(positions_np):
+        section.add_patch(Rectangle((radius - cube_size / 2.0, height - cube_size / 2.0), cube_size, cube_size,
+                                    facecolor="#b9d3e6", edgecolor="#355d7a", linewidth=0.8))
+    if fov_radius is not None:
+        angles = np.linspace(-np.pi / 2.0, np.pi / 2.0, 200)
+        section.plot(fov_radius * np.cos(angles), fov_radius * np.sin(angles), "--", color="#52514e", label="FOV")
+        section.legend(loc="upper left", frameon=False)
+    z_extent = np.abs(positions_np[:, 2]).max() + cube_size
+    section.set_xlim(0.0, extent)
+    section.set_ylim(-z_extent, z_extent)
+    section.set_aspect("equal")
+    section.set_xlabel("radius [m]")
+    section.set_ylabel("z [m]")
+    section.set_title("Cross-section: every ring of every plane")
+    section.grid(alpha=0.25)
+    figure.suptitle(title)
+    figure.tight_layout()
+    return figure
+
+
+def plot_geometry_comparison(
+    designs: dict[str, torch.Tensor],
+    cube_size: float,
+    colors_by_design: dict[str, str],
+    fov_radius: float | None = None,
+    title: str = "Ring radii and plane heights",
+) -> plt.Figure:
+    """
+    Overlay the r-z cross-sections of several designs of the same stacked system.
+
+    Each ring of each plane is drawn as a magnet-sized outline at its radius and
+    height, in the design's colour, so changes of radii and plane spacing between
+    designs are visible directly. Only z >= 0 is drawn; the stacks are mirrored.
+    """
+    figure, axis = plt.subplots(figsize=(8, 6.5))
+    radius_max, height_max = 0.0, 0.0
+    for label, positions in designs.items():
+        sections = _ring_sections(positions.detach().cpu().numpy())
+        sections = sections[sections[:, 1] >= -1e-9]
+        color = colors_by_design[label]
+        for index, (radius, height) in enumerate(sections):
+            axis.add_patch(Rectangle(
+                (radius - cube_size / 2.0, height - cube_size / 2.0), cube_size, cube_size,
+                fill=False, edgecolor=color, linewidth=1.4, label=label if index == 0 else None,
+            ))
+        radius_max = max(radius_max, float(sections[:, 0].max()))
+        height_max = max(height_max, float(sections[:, 1].max()))
+    if fov_radius is not None:
+        angles = np.linspace(0.0, np.pi / 2.0, 100)
+        axis.plot(fov_radius * np.cos(angles), fov_radius * np.sin(angles), ":", color="#52514e", label="FOV")
+    axis.set_xlim(0.0, radius_max + 2.0 * cube_size)
+    axis.set_ylim(-cube_size, height_max + 2.0 * cube_size)
+    axis.set_aspect("equal")
+    axis.set_xlabel("radius [m]")
+    axis.set_ylabel("z [m]")
+    axis.set_title(title)
+    axis.grid(alpha=0.25)
+    axis.legend(loc="upper left", frameon=False)
+    figure.tight_layout()
+    return figure

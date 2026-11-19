@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import torch
+import torch.utils.checkpoint
 
 MU_0 = 4.0e-7 * torch.pi
 
@@ -105,6 +106,82 @@ def calc_b_at_points_fast(
         b_out[point_start:point_end] = k * b_chunk
 
     return b_out
+
+
+def _dipole_block(moments: torch.Tensor, positions: torch.Tensor, points: torch.Tensor,
+                  eps2: float) -> torch.Tensor:
+    """Field of n arrangements, moments and positions (n, M, 3), at points (n, P, 3)."""
+    r_vec = points[:, :, None, :] - positions[:, None, :, :]
+    r2 = torch.sum(r_vec * r_vec, dim=-1, keepdim=True).clamp_min(eps2)
+    inv_r = torch.rsqrt(r2)
+    inv_r3 = inv_r / r2
+    inv_r5 = inv_r3 / r2
+    m_dot_r = torch.sum(moments[:, None, :, :] * r_vec, dim=-1, keepdim=True)
+    b = 3.0 * r_vec * m_dot_r * inv_r5 - moments[:, None, :, :] * inv_r3
+    return (MU_0 / (4.0 * torch.pi)) * b.sum(dim=2)
+
+
+def calc_b_at_points_batched(
+    dipole_br: torch.Tensor,
+    vol: torch.Tensor | float,
+    dipole_pos: torch.Tensor,
+    points: torch.Tensor,
+    eps: float = 1e-12,
+    chunk_samples: int | None = 16,
+) -> torch.Tensor:
+    """
+    Compute the fields of N independent dipole arrangements at once.
+
+    Used for Monte Carlo children of one nominal design: every child has its own
+    remanence vectors and, optionally, its own positions and evaluation points.
+
+    Args:
+        dipole_br: Remanence vectors in tesla, shape (N, M, 3).
+        vol: Magnet volumes in m^3, shape (M,) or a scalar.
+        dipole_pos: Dipole positions in meters, shape (N, M, 3) or (M, 3).
+        points: Evaluation points in meters, shape (N, P, 3) or (P, 3).
+        eps: Minimum distance used for numerical stability.
+        chunk_samples: Number of arrangements evaluated per chunk. Under autograd
+            every chunk is checkpointed, so memory scales with the chunk, not N.
+
+    Returns:
+        Magnetic field in tesla, shape (N, P, 3).
+    """
+    if dipole_br.ndim != 3 or dipole_br.shape[-1] != 3:
+        raise ValueError("dipole_br must have shape (N, M, 3).")
+    n_samples, n_magnets = dipole_br.shape[:2]
+    dtype = dipole_br.dtype
+    device = dipole_br.device
+    if dipole_pos.ndim == 2:
+        dipole_pos = dipole_pos.expand(n_samples, -1, -1)
+    if points.ndim == 2:
+        points = points.expand(n_samples, -1, -1)
+    if dipole_pos.shape != dipole_br.shape:
+        raise ValueError("dipole_pos must have shape (M, 3) or (N, M, 3) matching dipole_br.")
+    if points.ndim != 3 or points.shape[0] != n_samples or points.shape[-1] != 3:
+        raise ValueError("points must have shape (P, 3) or (N, P, 3).")
+    vol = torch.as_tensor(vol, device=device, dtype=dtype).reshape(-1)
+    if vol.numel() == 1:
+        vol = vol.expand(n_magnets)
+    if vol.shape[0] != n_magnets:
+        raise ValueError("vol must be scalar or have shape (M,).")
+
+    moments = dipole_br * (vol[None, :, None] / MU_0)
+    points = points.to(device=device, dtype=dtype)
+    dipole_pos = dipole_pos.to(device=device, dtype=dtype)
+    chunk_samples = chunk_samples or n_samples
+    checkpointed = torch.is_grad_enabled() and any(
+        tensor.requires_grad for tensor in (moments, dipole_pos, points)
+    )
+    blocks = []
+    for start in range(0, n_samples, chunk_samples):
+        end = min(start + chunk_samples, n_samples)
+        arguments = (moments[start:end], dipole_pos[start:end], points[start:end], eps * eps)
+        if checkpointed:
+            blocks.append(torch.utils.checkpoint.checkpoint(_dipole_block, *arguments, use_reentrant=False))
+        else:
+            blocks.append(_dipole_block(*arguments))
+    return torch.cat(blocks, dim=0)
 
 
 def calc_b_at_points(
