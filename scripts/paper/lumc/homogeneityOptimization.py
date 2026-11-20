@@ -17,9 +17,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
+repo_root = Path(__file__).resolve().parents[3]
+sys.path[:0] = [str(repo_root / "src"), str(repo_root)]
 
-from fieldsmith.evaluation.lumc_halbach import (
+from scripts.paper.lumc.lumc_halbach import (
     INNER_NUM_MAGNETS,
     INNER_RING_RADII,
     OUTER_NUM_MAGNETS,

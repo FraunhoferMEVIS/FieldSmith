@@ -17,12 +17,13 @@ import numpy as np
 from scipy.optimize import OptimizeResult, differential_evolution
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
+repo_root = Path(__file__).resolve().parents[3]
+sys.path[:0] = [str(repo_root / "src"), str(repo_root)]
 
-from fieldsmith.evaluation.lumc_halbach import INNER_RING_RADII, create_configuration
+from scripts.paper.lumc.lumc_halbach import INNER_RING_RADII, create_configuration
 from fieldsmith.metrics import component_field_strength, component_peak_to_peak_ppm
 
-from run_lumc_radius_optimisation import LUMCRadiusModel, parse_initial_vector
+from scripts.paper.lumc.run_lumc_radius_optimisation import LUMCRadiusModel, parse_initial_vector
 
 
 def parse_args() -> argparse.Namespace:

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import torch
 
-import fieldsmith.evaluation.lumc_halbach as lumc
+import scripts.paper.lumc.lumc_halbach as lumc
 
 
 def test_magnetization_returns_cube_dipole_moment() -> None:

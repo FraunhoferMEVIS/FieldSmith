@@ -17,10 +17,11 @@ import numpy as np
 import torch
 from torch import nn
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
+repo_root = Path(__file__).resolve().parents[3]
+sys.path[:0] = [str(repo_root / "src"), str(repo_root)]
 
 from fieldsmith.configurations import MagnetConfiguration
-from fieldsmith.evaluation.lumc_halbach import INNER_RING_RADII, create_configuration
+from scripts.paper.lumc.lumc_halbach import INNER_RING_RADII, create_configuration
 from fieldsmith.field_simulations.dipole import calc_b_at_points_fast
 from fieldsmith.metrics import (
     component_field_strength,

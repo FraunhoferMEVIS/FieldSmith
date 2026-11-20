@@ -1,5 +1,6 @@
 [project]
 name = "fieldsmith"
+license-files = ["LICENSE"]
 version = "0.1.0"
 description = "Fast dipole-field based magnet optimization utilities."
 readme = "README.md"
@@ -67,7 +68,7 @@ dev = [
 where = ["src"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 markers = [
     "unit: Fast tests for isolated units of behavior.",
     "validation: Tests that validate numerical or system behavior against reference results.",

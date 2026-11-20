@@ -131,7 +131,7 @@ uv run --extra cpu pytest tests --cov=fieldsmith --cov-report=html
 
 The additional notice for the utilized software in [`docs/licences/`](docs/licences/) summarizes the:
 
-- [MIT License](docs/licences/LUMC-LowFieldMRI.txt) for the `scripts/paper/lumc/homogeneityOptimization.py` and `src/fieldsmith/evaluation/lumc_halbach.py`. Corresponding repository: [HalbachOptimization](https://github.com/LUMC-LowFieldMRI/HalbachOptimisation).
+- [MIT License](docs/licences/LUMC-LowFieldMRI.txt) for the `scripts/paper/lumc/homogeneityOptimization.py` and `scripts/paper/lumc/lumc_halbach.py`. Corresponding repository: [HalbachOptimization](https://github.com/LUMC-LowFieldMRI/HalbachOptimisation).
 - [CERN Open Hardware Licence Version 2](docs/licences/OSII_rc2.1.txt) for the files describing the ROMA arrangement in `data/osii_rc2.1/`. Corresponding repository: [OSII/rc/2.1](https://gitlab.com/osii/magnet/30cm-halbach-magnet/-/tree/rc/2.1?ref_type=heads)
 
 ## Citing
