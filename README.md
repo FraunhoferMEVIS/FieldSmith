@@ -2,7 +2,7 @@
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/framework-PyTorch-EE4C2C?logo=pytorch&logoColor=white)
-![Version 0.1.0](https://img.shields.io/badge/version-0.1.0-2F6F8F)
+![Version 0.1.3](https://img.shields.io/badge/version-0.1.3-2F6F8F)
 ![Tests](https://img.shields.io/badge/tests-pytest-0A9EDC?logo=pytest&logoColor=white)
 <!-- ![Last commit](https://img.shields.io/badge/last_commit-2026--08--31-438A72) -->
 
@@ -51,6 +51,11 @@ Include the same extra in subsequent `uv run` commands, for example
 installation avoids the CUDA runtime packages. GPU execution is recommended for
 dense three-dimensional or cuboid calculations; use double precision for results
 around 1,000 ppm or below.
+
+By default, uv also installs the `dev` dependency group for the repository's
+paper scripts, notebooks, and tests. A pip install of the built package uses
+the runtime requirements from `[project]` in `pyproject.toml`. To try those
+runtime requirements from a clone, run `uv sync --locked --no-dev --extra cpu`.
 
 ## Available workflows
 
