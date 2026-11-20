@@ -29,4 +29,5 @@ data/roma/*
 !data/roma/roma_roi_200.npz
 !data/paper/
 !data/paper/*.pt
+!README_PYPI.md
 dist/
