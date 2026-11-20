@@ -2,7 +2,7 @@
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/framework-PyTorch-EE4C2C?logo=pytorch&logoColor=white)
-![Version 0.1.4.dev1](https://img.shields.io/badge/version-0.1.4.dev1-2F6F8F)
+![Version 0.1.4](https://img.shields.io/badge/version-0.1.4-2F6F8F)
 
 FieldSmith is a PyTorch-based framework for designing, optimizing, and evaluating permanent-magnet arrays. It provides differentiable magnetic-field models, reusable geometry and sampling components, gradient-based optimization workflows, and tools for checking designs under realistic physics and manufacturing tolerances.
 

@@ -1,7 +1,7 @@
 [project]
 name = "fieldsmith"
 license-files = ["LICENSE"]
-version = "0.1.4.dev1"
+version = "0.1.4"
 description = "Fast dipole-field based magnet optimization utilities."
 readme = "README_PYPI.md"
 requires-python = ">=3.11"

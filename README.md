@@ -2,7 +2,7 @@
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/framework-PyTorch-EE4C2C?logo=pytorch&logoColor=white)
-![Version 0.1.4.dev1](https://img.shields.io/badge/version-0.1.4.dev1-2F6F8F)
+![Version 0.1.4](https://img.shields.io/badge/version-0.1.4-2F6F8F)
 ![Tests](https://img.shields.io/badge/tests-pytest-0A9EDC?logo=pytest&logoColor=white)
 <!-- ![Last commit](https://img.shields.io/badge/last_commit-2026--08--31-438A72) -->
 
