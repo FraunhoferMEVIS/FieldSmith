@@ -68,7 +68,7 @@ when W&B logging is disabled.
 
 ## License
 
-FieldSmith is distributed under the **FRAUNHOFER ?fieldsmith? LICENSE FOR
+FieldSmith is distributed under the **FRAUNHOFER »fieldsmith« LICENSE FOR
 SCIENTIFIC NON-COMMERCIAL RESEARCH PURPOSES**. The full license is included in
 the package as `LICENSE`.
 
