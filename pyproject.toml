@@ -26,6 +26,12 @@ cu128 = [
     "torch==2.11.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/FraunhoferMEVIS/FieldSmith"
+Repository = "https://github.com/FraunhoferMEVIS/FieldSmith"
+"Package on PyPI" = "https://pypi.org/project/fieldsmith/"
+Issues = "https://github.com/FraunhoferMEVIS/FieldSmith/issues"
+
 [tool.uv]
 conflicts = [
     [
